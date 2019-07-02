@@ -99,6 +99,13 @@ namespace OpenViBEPlugins
 			bool m_bTwoValueInput;
 			float score;
 			int cpt;
+
+			OpenViBE::uint64 choice;
+			OpenViBE::uint64 gainE;
+			OpenViBE::uint64 gainS;
+
+			float maxAmpl;
+
 			OpenViBE::uint64 m_ui64PreviousActivationTime;
 			OpenViBE::uint64 m_i64PredictionsToIntegrate;
 			int m_uiIdleFuncTag;
@@ -196,6 +203,10 @@ namespace OpenViBEPlugins
 				rBoxAlgorithmPrototype.addSetting("Show instruction",OV_TypeId_Boolean,"true");
 				rBoxAlgorithmPrototype.addSetting("Predictions to integrate",OV_TypeId_Integer,"5");
 				rBoxAlgorithmPrototype.addSetting("Left (1) or Right (2)", OV_TypeId_Integer, "1");
+
+				rBoxAlgorithmPrototype.addSetting("Choix du systeme de regulation : logarithme (1) direct (2)", OV_TypeId_Integer, "1");
+				rBoxAlgorithmPrototype.addSetting("Logartithme : Gain d'entree", OV_TypeId_Integer, "5");
+				rBoxAlgorithmPrototype.addSetting("Logartithme : Gain de sortie", OV_TypeId_Integer, "300");
 
 				rBoxAlgorithmPrototype.addFlag(OpenViBE::Kernel::BoxFlag_CanModifySetting);
 				rBoxAlgorithmPrototype.addFlag(OpenViBE::Kernel::BoxFlag_CanAddSetting);

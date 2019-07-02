@@ -138,8 +138,7 @@ namespace OpenViBEPlugins {
 			m_vAmplitude.push_back(Ampli); //THe data of the matrix are not stored at the beginning which means that you need to creat an array containing every amplitude
 			//printf("Matrice sortie : %f\n",Ampli);
 			m_fvelocity = aggregatePredictions(false);//The "velocity"/"intensity" of the signal is then processed via the function aggregate predictions
-
-
+			
 			
 
 		}
@@ -151,6 +150,10 @@ namespace OpenViBEPlugins {
 			m_i64left(1),
 			score(0),
 			cpt(1),
+			choice(1),
+			gainE(5),
+			maxAmpl(0),
+			gainS(300),
 			m_bTwoValueInput(false),
 			m_fvelocity(0.0),
 			memory(0.0),
@@ -170,6 +173,10 @@ namespace OpenViBEPlugins {
 			m_bShowInstruction = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 0);
 			m_i64PredictionsToIntegrate = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 1);
 			m_i64left = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 2);
+			choice = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 3);
+			gainE = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 4);
+			gainS = FSettingValueAutoCast(*this->getBoxAlgorithmContext(), 5);
+			maxAmpl = 0;
 			m_uiIdleFuncTag = 0;
 			cpt = 1;
 			score = 0;
@@ -265,19 +272,24 @@ namespace OpenViBEPlugins {
 					MatrixDistanceLDA(m_oInput1Decoder.getOutputMatrix());
 
 				}
+
+				
+
 				uint64 l_ui64CurrentTime = this->getPlayerContext().getCurrentTime();
 				score_processing(m_bShowInstruction ? m_eCurrentDirection : EDirectionScore_None);
 				m_oOutput0Encoder.encodeHeader();
 				IStimulationSet* l_pStimulationSet = m_oOutput0Encoder.getInputStimulationSet();
 				l_pStimulationSet->clear();
 				getBoxAlgorithmContext()->getDynamicBoxContext()->markOutputAsReadyToSend(0, 0, 0);
-				l_pStimulationSet->appendStimulation(memory, l_ui64CurrentTime, 0);
+				l_pStimulationSet->appendStimulation(score, l_ui64CurrentTime, 0);
 				m_oOutput0Encoder.encodeBuffer();
 
 				l_pBoxIO->markOutputAsReadyToSend(0, m_ui64PreviousActivationTime, l_ui64CurrentTime);
 				getBoxAlgorithmContext()->markAlgorithmAsReadyToProcess();
 
 				m_ui64PreviousActivationTime = l_ui64CurrentTime;
+
+				
 
 			}
 
@@ -290,13 +302,16 @@ namespace OpenViBEPlugins {
 		float CBoxAlgorithmScoringTool::aggregatePredictions(bool bIncludeAll)
 		{
 			
+			
 			float VoteAggregateUp = 0;
 			float VoteAggregateDown = 0;
+			int thresh = (int)gainS;
 			float retour = 0;
 			int cpt1 = 0;
 			int cpt2 = 0;
 			float weight1 = 0.5;
 			float weight2 = 0.5;
+			float votetoaggregate = 0;
 			// Do we have enough predictions to integrate a result?
 			if (m_vAmplitude.size() >= m_i64PredictionsToIntegrate)
 			{
@@ -310,33 +325,48 @@ namespace OpenViBEPlugins {
 				{
 
 
-
-
-					if (*a * 10 >= 1)
+					if (choice == 1)
 					{
-						VoteAggregateUp += weight1*log(10 * (float)*a);
-						weight1 /= 2;
-						cpt1++;
+
+						if (*a * gainE >= 1)
+						{
+							VoteAggregateUp += weight1*log(gainE * (float)*a);
+							weight1 /= 2;
+							cpt1++;
+						}
+						if (*a * gainE <= -1)
+						{
+							VoteAggregateDown += -weight2 * log(abs(gainE * (float)*a));
+							weight2 /= 2;
+							cpt2++;
+						}
+
+						if ((*a * gainE > -1) && (*a * gainE < 1))
+						{
+							cpt1 = 1;
+							cpt2 = 1;
+							VoteAggregateUp = 0.5;
+							VoteAggregateDown = -0.5;
+
+						}
 					}
-					if (*a * 10 <= -1)
-					{
-						VoteAggregateDown += -weight2 * log(abs(10 * (float)*a));
-						weight2 /= 2;
-						cpt2++;
-					}
 
-					if ((*a * 10 > -1) && (*a * 10 < 1))
+					if (choice == 2)
 					{
-						cpt1 = 1;
-						cpt2 = 1;
-						VoteAggregateUp = 0.5;
-						VoteAggregateDown = -0.5;
-
+						votetoaggregate += (float)*a;
+						if (maxAmpl < abs((float)*a))
+						{
+							maxAmpl = (float)*a;
+						}
 					}
 
 
 				}
-
+				if (maxAmpl != 0)
+				{
+					votetoaggregate /= maxAmpl;
+					votetoaggregate /= count;
+				}
 				if (cpt1 != 0)
 					VoteAggregateUp /= cpt1;
 				if (cpt2 != 0)
@@ -347,7 +377,26 @@ namespace OpenViBEPlugins {
 			
 
 			//At the end amplification and summary of the two actors
-			return (VoteAggregateUp + VoteAggregateDown);
+			if (choice == 1)
+			{
+				return gainS*(VoteAggregateUp + VoteAggregateDown);
+			}
+			if (choice == 2)
+			{
+
+				//printf("%f\n", votetoaggregate)
+				if (gainS*votetoaggregate >= 0)
+				{
+
+					return (float)(pow((gainS*votetoaggregate), 0.5)*gainS);
+				}
+				if (gainS*votetoaggregate < 0)
+				{
+
+					return  100 * (float)(pow(-(gainS*votetoaggregate), 0.5)*gainS);
+				}
+
+			}
 		}
 		
 
@@ -374,10 +423,12 @@ namespace OpenViBEPlugins {
 
 				break;
 			case EScoreInterfaceState_ContinousFeedback:
-				score = score + m_fvelocity;
-				cpt += 1;
-				score = score / cpt;
-				printf("Score = %f\n", score);
+				score = 10* m_fvelocity;
+				if (score < 0)
+				{
+					score = 100 * abs(score);
+				}
+				
 				switch (eDirection)
 				{
 				case EDirectionScore_None:
@@ -407,7 +458,7 @@ namespace OpenViBEPlugins {
 				}
 
 
-				memory = 0;
+				
 				break;
 			}
 			
